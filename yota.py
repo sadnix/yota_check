@@ -1,3 +1,4 @@
+import os
 import uuid
 import requests
 import urllib3
@@ -8,7 +9,7 @@ from datetime import datetime
 from pytz import timezone
 from pathlib import Path
 
-BASE_DIR = Path(__file__).resolve().parent
+BASE_DIR = os.path.abspath(os.path.join(__file__, '../'))
 
 ylog = logging.getLogger('ylogger')
 ylog.setLevel(logging.DEBUG)
@@ -20,23 +21,23 @@ tz = timezone('Europe/Moscow')
 
 logging.Formatter.converter = timetz
 
-handler = logging.handlers.TimedRotatingFileHandler(Path(BASE_DIR, 'yota.log'), when="midnight", interval=1, backupCount=30)
+handler = logging.handlers.TimedRotatingFileHandler(os.path.join(BASE_DIR, 'yota.log'), when="midnight", interval=1, backupCount=30)
 handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(filename)s %(lineno)d %(threadName)s - %(message)s"))
 ylog.addHandler(handler)
 
 s = requests.Session()
 try:
     resp = s.get("http://ya.ru", allow_redirects=False)
-    ylog.debug('Интернет работает')
+    ylog.debug('Connection established')
 except Exception as e:
-    # Если отвалился модем или пропал сигнал
-    ylog.debug('Проверка не удалась: %s'%(e))
+    # Modem not found or not connected
+    ylog.debug('Connection error: %s'%(e))
     exit()
 
-# Если Яндекс пытается редиректить с http на https, то интернет работает
+# if redirect from http to https then connection established
 if resp.headers['Location'] != 'https://ya.ru/':
 
-    # Сгенерируем номер транзации. Все последующие запросы должны проходить с этим номером в заголовке
+    # generate transaction number for header
     transaction = str(uuid.uuid4())
 
     headers = {
@@ -47,21 +48,21 @@ if resp.headers['Location'] != 'https://ya.ru/':
 
     url = "https://hello.yota.ru/wa/v1/service/temp"
 
-    # Дальше два варианта
-    # Первый: если в личном кабинете устройство переведено на бесплатный тариф, то надо раз в сутки делать так
+    # two variants:
+    # first: if device on free tariff then restart once per day
     data = '{"serviceCode":"light"}'
     try:
         resp = s.post(url, data=data, headers=headers)
         ylog.debug([url, data, resp.status_code, resp.text, resp.headers])
     except Exception as e:
-        ylog.debug('Не удалось отправить %s: %s'%(data, e))
+        ylog.debug('Error: POST not sended %s: %s'%(data, e))
 
     if resp.status_code != 200:
-        # Второй: если в личном кабинете устройство не переведено на бесплатный тариф, а просто закончились деньги,
-        # то надо раз в 2 часа делать так
+        # second: if not free tariff and not money on account
+        # restart once per 2 hours
         data='{"serviceCode":"sa"}'
         try:
             resp = s.post(url, data=data, headers=headers)
             ylog.debug([url, data, resp.status_code, resp.text, resp.headers])
         except Exception as e:
-            ylog.debug('Не удалось отправить %s: %s'%(data, e))
+            ylog.debug('Error: POST not sended %s: %s'%(data, e))
